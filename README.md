@@ -48,7 +48,18 @@
 ## Elastic IP
 ![Elastic IP](./screenshots/elasticIp.png)
 
+## GitHub Actions Workflow
+
+#Install and Build
+
+<img width="100%" alt="terraform-apply" src="./screenshots/image.png">
+
 ---
+
+##Unabel to depoy to ec2
+
+---
+
 
 ## Terraform Code
 ```main.tf
@@ -279,10 +290,3 @@ terraform {
 
 ---
 
-### GitHub Actions Workflow
-
-#Install and Build
-
-<img width="100%" alt="terraform-apply" src="./screenshots/image.png">
----
-#Unabel to depoy to ec2
