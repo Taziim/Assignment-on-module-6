@@ -1,82 +1,5 @@
-# AWS 3-Tier Architecture Deployment Using Terraform & GitHub Actions
-
-## Project Workflow
-
-```text
-Developer Pushes Code to GitHub
-                │
-                ▼
-        GitHub Actions Triggered
-                │
-                ▼
-     Terraform Infrastructure Provisioning
-                │
-                ▼
-        AWS Resources Created
-    (VPC, Subnets, EC2, NAT, SG)
-                │
-                ▼
-      Frontend & Backend Deployment
-                │
-                ▼
-      Application Connected to Database
-                │
-                ▼
-     Automatic Deployment Completed
-```
-
----
-
+# Assingment 6
 # Infrastructure Workflow
-
-```text
-                Internet
-                    │
-        ┌─────────────────────┐
-        │ Internet Gateway    │
-        └─────────────────────┘
-                    │
-        ┌─────────────────────┐
-        │ Public Subnet       │
-        │ Bastion Host        │
-        │ Frontend Server     │
-        └─────────────────────┘
-                    │
-              NAT Gateway
-                    │
-        ┌─────────────────────┐
-        │ Private Subnet      │
-        │ Backend Server      │
-        └─────────────────────┘
-                    │
-        ┌─────────────────────┐
-        │ Database Subnet     │
-        │ MySQL / RDS         │
-        └─────────────────────┘
-```
-
----
-
-# CI/CD Workflow
-
-```text
-GitHub Repository
-        │
-        ▼
-GitHub Actions Workflow
-        │
-        ├── Install Dependencies
-        ├── Build Frontend
-        ├── Build Backend
-        ├── SSH into EC2
-        ├── Deploy Application
-        └── Restart Services
-                │
-                ▼
-        AWS EC2 Instances Updated
-```
-
----
 
 # Screenshots
 
@@ -130,7 +53,6 @@ GitHub Actions Workflow
 <img width="100%" alt="github-actions" src="screenshots/github-actions.png">
 
 ---
-
 
 ## Terraform Code
 ```main.tf
