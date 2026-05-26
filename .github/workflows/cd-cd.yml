@@ -12,34 +12,68 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+
+# -------------------------
+# BUILD JOB
+# -------------------------
+  build:
+    name: Build Frontend & Prepare Backend
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # -------------------------
+      # NODE SETUP
+      # -------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # ---------------- FRONTEND BUILD ----------------
+      # -------------------------
+      # FRONTEND BUILD
+      # -------------------------
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm install
+
       - name: Build Frontend
         working-directory: frontend
-        run: |
-          npm install
-          npm run build
+        run: npm run build
 
-      # ---------------- BACKEND INSTALL ----------------
-      - name: Prepare Backend
+      # -------------------------
+      # BACKEND CHECK
+      # -------------------------
+      - name: Install Backend Dependencies
         working-directory: backend
         run: npm install
 
-      # ---------------- CHECK BUILD OUTPUT ----------------
-      - name: Verify dist exists
+      # -------------------------
+      # VERIFY BUILD OUTPUT
+      # -------------------------
+      - name: Verify Frontend Build
         run: ls -la frontend/dist
 
-      # ---------------- DEPLOY FRONTEND ----------------
-      - name: Deploy Frontend
+
+# -------------------------
+# DEPLOY JOB
+# -------------------------
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # -------------------------
+      # DEPLOY FRONTEND
+      # -------------------------
+      - name: Deploy Frontend to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -48,8 +82,10 @@ jobs:
           source: "frontend/dist/*"
           target: "/home/ec2-user/app/frontend"
 
-      # ---------------- DEPLOY BACKEND ----------------
-      - name: Deploy Backend
+      # -------------------------
+      # DEPLOY BACKEND
+      # -------------------------
+      - name: Deploy Backend to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -58,18 +94,37 @@ jobs:
           source: "backend/*"
           target: "/home/ec2-user/app/backend"
 
-      # ---------------- RESTART SERVER ----------------
-      - name: Restart App
+      # -------------------------
+      # RESTART SERVICES
+      # -------------------------
+      - name: Restart App on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+
+            echo "Starting deployment..."
+
+            # -------------------------
+            # FRONTEND (NGINX)
+            # -------------------------
             sudo rm -rf /usr/share/nginx/html/*
             sudo cp -r /home/ec2-user/app/frontend/* /usr/share/nginx/html/
 
+            # -------------------------
+            # BACKEND (PM2)
+            # -------------------------
             cd /home/ec2-user/app/backend
             npm install
 
-            pm2 restart backend || pm2 start server.js --name backend
+            if pm2 describe backend > /dev/null; then
+              pm2 restart backend
+            else
+              pm2 start server.js --name backend
+            fi
+
+            pm2 save
+
+            echo "Deployment completed successfully!"
