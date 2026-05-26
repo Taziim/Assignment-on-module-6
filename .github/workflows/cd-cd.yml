@@ -53,27 +53,6 @@ jobs:
         working-directory: ./backend
         run: npm install --force --legacy-peer-deps
 
-      # -------------------------
-      # UPLOAD FRONTEND BUILD
-      # -------------------------
-      - name: Upload Frontend Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/dist   # change to frontend/dist if using Vite
-          retention-days: 7
-
-      # # -------------------------
-      # # UPLOAD BACKEND CODE
-      # # -------------------------
-      # - name: Upload Backend Artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: backend-code
-      #     path: backend
-      #     retention-days: 7
-
-
   # -------------------------
   # DEPLOY JOB
   # -------------------------
