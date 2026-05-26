@@ -1,79 +1,32 @@
-name: Full CI/CD Pipeline
-
-on:
-  push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
-
-  workflow_dispatch:
-
 jobs:
-
-# -------------------------
-# BUILD JOB
-# -------------------------
-  build:
-    name: Build Frontend & Prepare Backend
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # -------------------------
-      # NODE SETUP
-      # -------------------------
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # -------------------------
-      # FRONTEND BUILD
-      # -------------------------
-      - name: Install Frontend Dependencies
-        working-directory: frontend
-        run: npm install
-
+      # ---------------- FRONTEND BUILD ----------------
       - name: Build Frontend
         working-directory: frontend
-        run: npm run build
+        run: |
+          npm install
+          npm run build
 
-      # -------------------------
-      # BACKEND CHECK
-      # -------------------------
-      - name: Install Backend Dependencies
+      # ---------------- BACKEND INSTALL ----------------
+      - name: Prepare Backend
         working-directory: backend
         run: npm install
 
-      # -------------------------
-      # VERIFY BUILD OUTPUT
-      # -------------------------
-      - name: Verify Frontend Build
+      # ---------------- CHECK BUILD OUTPUT ----------------
+      - name: Verify dist exists
         run: ls -la frontend/dist
 
-
-# -------------------------
-# DEPLOY JOB
-# -------------------------
-  deploy:
-    name: Deploy to EC2
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # -------------------------
-      # DEPLOY FRONTEND
-      # -------------------------
-      - name: Deploy Frontend to EC2
+      # ---------------- DEPLOY FRONTEND ----------------
+      - name: Deploy Frontend
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -82,10 +35,8 @@ jobs:
           source: "frontend/dist/*"
           target: "/home/ec2-user/app/frontend"
 
-      # -------------------------
-      # DEPLOY BACKEND
-      # -------------------------
-      - name: Deploy Backend to EC2
+      # ---------------- DEPLOY BACKEND ----------------
+      - name: Deploy Backend
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -94,37 +45,18 @@ jobs:
           source: "backend/*"
           target: "/home/ec2-user/app/backend"
 
-      # -------------------------
-      # RESTART SERVICES
-      # -------------------------
-      - name: Restart App on EC2
+      # ---------------- RESTART SERVER ----------------
+      - name: Restart App
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-
-            echo "Starting deployment..."
-
-            # -------------------------
-            # FRONTEND (NGINX)
-            # -------------------------
             sudo rm -rf /usr/share/nginx/html/*
             sudo cp -r /home/ec2-user/app/frontend/* /usr/share/nginx/html/
 
-            # -------------------------
-            # BACKEND (PM2)
-            # -------------------------
             cd /home/ec2-user/app/backend
             npm install
 
-            if pm2 describe backend > /dev/null; then
-              pm2 restart backend
-            else
-              pm2 start server.js --name backend
-            fi
-
-            pm2 save
-
-            echo "Deployment completed successfully!"
+            pm2 restart backend || pm2 start server.js --name backend
