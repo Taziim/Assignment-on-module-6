@@ -48,10 +48,6 @@
 ## Elastic IP
 ![Elastic IP](./screenshots/elasticIp.png)
 
-## GitHub Actions Workflow
-
-<img width="100%" alt="github-actions" src="screenshots/github-actions.png">
-
 ---
 
 ## Terraform Code
@@ -280,3 +276,13 @@ terraform {
     }
   }
 }
+
+---
+
+### GitHub Actions Workflow
+
+#Install and Build
+<img width="100%" alt="github-actions" src="screenshots/github-actions.png">
+![alt text](image.png)
+---
+#Unabel to depoy to ec2
