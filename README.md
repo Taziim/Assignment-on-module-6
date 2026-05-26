@@ -282,7 +282,6 @@ terraform {
 ### GitHub Actions Workflow
 
 #Install and Build
-<img width="100%" alt="github-actions" src="screenshots/github-actions.png">
-![alt text](image.png)
+<img width="100%" alt="github-actions" src="./screenshots/image.png">
 ---
 #Unabel to depoy to ec2
