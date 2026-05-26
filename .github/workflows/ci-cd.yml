@@ -3,11 +3,11 @@ name: Full CI/CD Pipeline
 on:
   push:
     branches:
-      - development
+      - main
 
   pull_request:
     branches:
-      - development
+      - main
 
 jobs:
 
@@ -28,12 +28,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
       # -------------------------
       # INSTALL DEPENDENCIES
       # -------------------------
       - name: Install dependencies (Frontend)
+        working-directory: ./frontend
         run: |
           npm install --force --legacy-peer-deps
 
@@ -41,21 +42,23 @@ jobs:
       # BUILD FRONTEND
       # -------------------------
       - name: Build React App
+        working-directory: ./frontend
         run: npm run build
 
-      # -------------------------
-      # DEBUG
-      # -------------------------
-      - name: Debug files
-        run: |
-          pwd
-          ls -la
-          cat package.json
+      # # -------------------------
+      # # DEBUG
+      # # -------------------------
+      # - name: Debug files
+      #   run: |
+      #     pwd
+      #     ls -la
+      #     cat package.json
 
       # -------------------------
       # BACKEND SETUP (if exists)
       # -------------------------
       - name: Install Backend Dependencies
+        working-directory: ./backend
         run: |
           if [ -d "backend" ]; then
             cd backend
