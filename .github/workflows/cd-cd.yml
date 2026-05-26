@@ -1,23 +1,21 @@
-name: Full CI/CD Pipeline
+name: Full CI/CD Pipeline v1
 
 on:
   push:
     branches:
       - main
-
   pull_request:
     branches:
       - main
-
   workflow_dispatch:
 
 jobs:
 
-# -------------------------
-# BUILD JOB
-# -------------------------
+  # -------------------------
+  # BUILD JOB
+  # -------------------------
   build:
-    name: Build Frontend & Prepare Backend
+    name: Build React + Backend
     runs-on: ubuntu-latest
 
     steps:
@@ -30,48 +28,67 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
 
       # -------------------------
-      # FRONTEND BUILD
+      # FRONTEND INSTALL & BUILD
       # -------------------------
       - name: Install Frontend Dependencies
-        working-directory: frontend
-        run: npm install
+        working-directory: ./frontend
+        run: npm install --force --legacy-peer-deps
 
-      - name: Build Frontend
-        working-directory: frontend
+      - name: Build React App
+        working-directory: ./frontend
         run: npm run build
 
       # -------------------------
-      # BACKEND CHECK
+      # BACKEND INSTALL
       # -------------------------
       - name: Install Backend Dependencies
-        working-directory: backend
-        run: npm install
+        working-directory: ./backend
+        run: npm install --force --legacy-peer-deps
 
       # -------------------------
-      # VERIFY BUILD OUTPUT
+      # ARTIFACT UPLOADS (Fixes missing files in deploy job)
       # -------------------------
-      - name: Verify Frontend Build
-        run: ls -la frontend/dist
+      - name: Upload Frontend Production Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-assets
+          path: frontend/dist/   # Change to 'frontend/build/' if using Create React App instead of Vite
 
+      - name: Upload Backend Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-assets
+          path: backend/
 
-# -------------------------
-# DEPLOY JOB
-# -------------------------
+  # -------------------------
+  # DEPLOY JOB
+  # -------------------------
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: build
 
     steps:
+      # -------------------------
+      # DOWNLOAD ARTIFACTS (Fixes 'tar: empty archive' error)
+      # -------------------------
+      - name: Download Frontend Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-assets
+          path: ./frontend-dist
 
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Download Backend Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-assets
+          path: ./backend-dist
 
       # -------------------------
-      # DEPLOY FRONTEND
+      # DEPLOY FRONTEND TO EC2
       # -------------------------
       - name: Deploy Frontend to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -79,11 +96,12 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "frontend/dist/*"
+          source: "frontend-dist/**" # ** matches files recursively 
           target: "/home/ec2-user/app/frontend"
+          strip_components: 1        # Discards the parent 'frontend-dist' directory shell during upload
 
       # -------------------------
-      # DEPLOY BACKEND
+      # DEPLOY BACKEND TO EC2
       # -------------------------
       - name: Deploy Backend to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -91,11 +109,12 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "backend/*"
+          source: "backend-dist/**"
           target: "/home/ec2-user/app/backend"
+          strip_components: 1        # Discards the parent 'backend-dist' directory shell during upload
 
       # -------------------------
-      # RESTART SERVICES
+      # RESTART SERVICES ON EC2
       # -------------------------
       - name: Restart App on EC2
         uses: appleboy/ssh-action@v1.0.3
@@ -104,27 +123,22 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-
             echo "Starting deployment..."
 
-            # -------------------------
-            # FRONTEND (NGINX)
-            # -------------------------
+            # FRONTEND - Move build files to Nginx web directory
             sudo rm -rf /usr/share/nginx/html/*
             sudo cp -r /home/ec2-user/app/frontend/* /usr/share/nginx/html/
 
-            # -------------------------
-            # BACKEND (PM2)
-            # -------------------------
+            # BACKEND - Navigate, install platform-specific binaries, and reload PM2
+            mkdir -p /home/ec2-user/app/backend
             cd /home/ec2-user/app/backend
-            npm install
+
+            npm install --force --legacy-peer-deps
 
             if pm2 describe backend > /dev/null; then
               pm2 restart backend
             else
-              pm2 start server.js --name backend
+              pm2 start index.js --name backend
             fi
 
-            pm2 save
-
-            echo "Deployment completed successfully!"
+            echo "Deployment successful!"
