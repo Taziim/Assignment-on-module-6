@@ -1,4 +1,4 @@
-name: Full CI/CD Pipeline v1
+name: Full CI/CD Pipeline
 
 on:
   push:
@@ -13,11 +13,11 @@ on:
 
 jobs:
 
-  # -------------------------
-  # BUILD JOB
-  # -------------------------
+# -------------------------
+# BUILD JOB
+# -------------------------
   build:
-    name: Build React + Backend
+    name: Build Frontend & Prepare Backend
     runs-on: ubuntu-latest
 
     steps:
@@ -30,32 +30,36 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      # -------------------------
-      # FRONTEND INSTALL
-      # -------------------------
-      - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm install --force --legacy-peer-deps
+          node-version: 20
 
       # -------------------------
       # FRONTEND BUILD
       # -------------------------
-      - name: Build React App
-        working-directory: ./frontend
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build Frontend
+        working-directory: frontend
         run: npm run build
 
       # -------------------------
-      # BACKEND INSTALL
+      # BACKEND CHECK
       # -------------------------
       - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install --force --legacy-peer-deps
+        working-directory: backend
+        run: npm install
 
-  # -------------------------
-  # DEPLOY JOB
-  # -------------------------
+      # -------------------------
+      # VERIFY BUILD OUTPUT
+      # -------------------------
+      - name: Verify Frontend Build
+        run: ls -la frontend/dist
+
+
+# -------------------------
+# DEPLOY JOB
+# -------------------------
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
@@ -63,20 +67,11 @@ jobs:
 
     steps:
 
-      - name: Download Frontend Build
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/dist
-
-      - name: Download Backend Code
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-code
-          path: backend/
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       # -------------------------
-      # DEPLOY FRONTEND TO EC2
+      # DEPLOY FRONTEND
       # -------------------------
       - name: Deploy Frontend to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -84,11 +79,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "frontend-build/*"
+          source: "frontend/dist/*"
           target: "/home/ec2-user/app/frontend"
 
       # -------------------------
-      # DEPLOY BACKEND TO EC2
+      # DEPLOY BACKEND
       # -------------------------
       - name: Deploy Backend to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -96,11 +91,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "backend/"
+          source: "backend/*"
           target: "/home/ec2-user/app/backend"
 
       # -------------------------
-      # RESTART SERVICES ON EC2
+      # RESTART SERVICES
       # -------------------------
       - name: Restart App on EC2
         uses: appleboy/ssh-action@v1.0.3
@@ -109,22 +104,27 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+
             echo "Starting deployment..."
 
-            # FRONTEND
+            # -------------------------
+            # FRONTEND (NGINX)
+            # -------------------------
             sudo rm -rf /usr/share/nginx/html/*
             sudo cp -r /home/ec2-user/app/frontend/* /usr/share/nginx/html/
 
-            # BACKEND
-            mkdir -p /home/ec2-user/app/backend
+            # -------------------------
+            # BACKEND (PM2)
+            # -------------------------
             cd /home/ec2-user/app/backend
-
-            npm install --force --legacy-peer-deps
+            npm install
 
             if pm2 describe backend > /dev/null; then
               pm2 restart backend
             else
-              pm2 start index.js --name backend
+              pm2 start server.js --name backend
             fi
 
-            echo "Deployment successful!"
+            pm2 save
+
+            echo "Deployment completed successfully!"
