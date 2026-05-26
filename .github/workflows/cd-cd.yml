@@ -14,18 +14,18 @@ on:
 jobs:
 
   # -------------------------
-  # TEST + BUILD JOB
+  # BUILD JOB
   # -------------------------
   build:
     name: Build React + Backend
-    runs-on:  ubuntu-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       # -------------------------
-      # SETUP NODE
+      # NODE SETUP
       # -------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -33,75 +33,71 @@ jobs:
           node-version: '20'
 
       # -------------------------
-      # INSTALL DEPENDENCIES
+      # FRONTEND INSTALL
       # -------------------------
-      - name: Install dependencies (Frontend)
+      - name: Install Frontend Dependencies
         working-directory: ./frontend
-        run: |
-          npm install --force --legacy-peer-deps
+        run: npm install --force --legacy-peer-deps
 
       # -------------------------
-      # BUILD FRONTEND
+      # FRONTEND BUILD
       # -------------------------
       - name: Build React App
         working-directory: ./frontend
         run: npm run build
 
-      # # -------------------------
-      # # DEBUG
-      # # -------------------------
-      # - name: Debug files
-      #   run: |
-      #     pwd
-      #     ls -la
-      #     cat package.json
-
       # -------------------------
-      # BACKEND SETUP (if exists)
+      # BACKEND INSTALL
       # -------------------------
       - name: Install Backend Dependencies
         working-directory: ./backend
-        run: |
-          if [ -d "backend" ]; then
-            cd backend
-            npm install --force --legacy-peer-deps
-          fi
+        run: npm install --force --legacy-peer-deps
 
       # -------------------------
-      # UPLOAD BUILD ARTIFACT
+      # UPLOAD FRONTEND BUILD
       # -------------------------
-      - name: Upload build artifact
+      - name: Upload Frontend Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: react-build
-          path: dist/
+          name: frontend-build
+          path: frontend/build   # change to frontend/dist if using Vite
+          retention-days: 7
+
+      # -------------------------
+      # UPLOAD BACKEND CODE
+      # -------------------------
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-code
+          path: backend
           retention-days: 7
 
 
   # -------------------------
-  # DEPLOYMENT JOB
+  # DEPLOY JOB
   # -------------------------
   deploy:
-    name: Deploy to AWS EC2
+    name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: build
 
     steps:
 
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # -------------------------
-      # DOWNLOAD BUILD ARTIFACT
-      # -------------------------
-      - name: Download build artifact
+      - name: Download Frontend Build
         uses: actions/download-artifact@v4
         with:
-          name: react-build
-          path: dist/
+          name: frontend-build
+          path: frontend-build
+
+      - name: Download Backend Code
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-code
+          path: backend
 
       # -------------------------
-      # COPY FILES TO EC2 (FRONTEND)
+      # DEPLOY FRONTEND TO EC2
       # -------------------------
       - name: Deploy Frontend to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -109,11 +105,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "dist/*"
+          source: "frontend-build/*"
           target: "/home/ec2-user/app/frontend"
 
       # -------------------------
-      # COPY BACKEND TO EC2
+      # DEPLOY BACKEND TO EC2
       # -------------------------
       - name: Deploy Backend to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -121,29 +117,35 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "backend/*"
+          source: "backend/"
           target: "/home/ec2-user/app/backend"
 
       # -------------------------
-      # SSH INTO EC2 & RESTART SERVICES
+      # RESTART SERVICES ON EC2
       # -------------------------
-      - name: Restart Application on EC2
+      - name: Restart App on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "Deploying application..."
+            echo "Starting deployment..."
 
-            # Frontend setup (Nginx path example)
+            # FRONTEND
+            sudo rm -rf /usr/share/nginx/html/*
             sudo cp -r /home/ec2-user/app/frontend/* /usr/share/nginx/html/
 
-            # Backend setup
+            # BACKEND
+            mkdir -p /home/ec2-user/app/backend
             cd /home/ec2-user/app/backend
+
             npm install --force --legacy-peer-deps
 
-            # Restart backend using PM2
-            pm2 restart all || pm2 start app.js --name backend
+            if pm2 describe backend > /dev/null; then
+              pm2 restart backend
+            else
+              pm2 start index.js --name backend
+            fi
 
-            echo "Deployment completed successfully!"
+            echo "Deployment successful!"
