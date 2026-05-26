@@ -1,10 +1,151 @@
-name: Test CI
+name: Full CI/CD Pipeline v1
 
 on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
   workflow_dispatch:
 
 jobs:
-  test:
+
+  # -------------------------
+  # BUILD JOB
+  # -------------------------
+  build:
+    name: Build React + Backend
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "hello"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # -------------------------
+      # NODE SETUP
+      # -------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # -------------------------
+      # FRONTEND INSTALL
+      # -------------------------
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm install --force --legacy-peer-deps
+
+      # -------------------------
+      # FRONTEND BUILD
+      # -------------------------
+      - name: Build React App
+        working-directory: ./frontend
+        run: npm run build
+
+      # -------------------------
+      # BACKEND INSTALL
+      # -------------------------
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm install --force --legacy-peer-deps
+
+      # -------------------------
+      # UPLOAD FRONTEND BUILD
+      # -------------------------
+      - name: Upload Frontend Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build   # change to frontend/dist if using Vite
+          retention-days: 7
+
+      # -------------------------
+      # UPLOAD BACKEND CODE
+      # -------------------------
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-code
+          path: backend
+          retention-days: 7
+
+
+  # -------------------------
+  # DEPLOY JOB
+  # -------------------------
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+
+      - name: Download Frontend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend-build
+
+      - name: Download Backend Code
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-code
+          path: backend
+
+      # -------------------------
+      # DEPLOY FRONTEND TO EC2
+      # -------------------------
+      - name: Deploy Frontend to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "frontend-build/*"
+          target: "/home/ec2-user/app/frontend"
+
+      # -------------------------
+      # DEPLOY BACKEND TO EC2
+      # -------------------------
+      - name: Deploy Backend to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "backend/"
+          target: "/home/ec2-user/app/backend"
+
+      # -------------------------
+      # RESTART SERVICES ON EC2
+      # -------------------------
+      - name: Restart App on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "Starting deployment..."
+
+            # FRONTEND
+            sudo rm -rf /usr/share/nginx/html/*
+            sudo cp -r /home/ec2-user/app/frontend/* /usr/share/nginx/html/
+
+            # BACKEND
+            mkdir -p /home/ec2-user/app/backend
+            cd /home/ec2-user/app/backend
+
+            npm install --force --legacy-peer-deps
+
+            if pm2 describe backend > /dev/null; then
+              pm2 restart backend
+            else
+              pm2 start index.js --name backend
+            fi
+
+            echo "Deployment successful!"
